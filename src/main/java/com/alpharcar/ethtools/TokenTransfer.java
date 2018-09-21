@@ -68,6 +68,8 @@ public class TokenTransfer implements Runnable {
 
     private static String key_file = "/Users/leo/Documents/src_codes/alphaauto/acar_ico/web3j-tools/src/main/resources/keystore/UTC--2018-01-14T18-46-20.321874736Z--da83aee0f49802a331d455f503341a5fdcbde923";
 
+    private static String pwd = "a";
+
     private static int sleepDuration = 10000;
 
     public TokenTransfer() {
@@ -79,7 +81,7 @@ public class TokenTransfer implements Runnable {
         web3j = Web3j.build(new HttpService(url));
 
         try {
-            Credentials credentials = WalletUtils.loadCredentials("a", key_file);
+            Credentials credentials = WalletUtils.loadCredentials(pwd, key_file);
             testTokenTransaction(credentials, fromAddress, contractAddress, toAddress, amt, decimals);
         } catch (Exception e) {
             System.err.println(e);
