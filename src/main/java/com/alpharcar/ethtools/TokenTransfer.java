@@ -14,7 +14,9 @@ import org.web3j.protocol.admin.methods.response.PersonalUnlockAccount;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.request.Transaction;
 import org.web3j.protocol.core.methods.response.EthGetTransactionCount;
+import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt;
 import org.web3j.protocol.core.methods.response.EthSendTransaction;
+import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.ChainId;
 import org.web3j.utils.Convert;
@@ -25,8 +27,24 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
-public class TokenTransfer {
+public class TokenTransfer implements Runnable {
+
+    private static boolean running = true;
+
+    private class ExitHandler extends Thread {
+
+        public ExitHandler() {
+            super("Exit Handler");
+        }
+
+        public void run() {
+            System.out.println("Set exit");
+            running = false;
+        }
+
+    }
 
     private static Web3j web3j;
 
@@ -50,18 +68,45 @@ public class TokenTransfer {
 
     private static String key_file = "/Users/leo/Documents/src_codes/alphaauto/acar_ico/web3j-tools/src/main/resources/keystore/UTC--2018-01-14T18-46-20.321874736Z--da83aee0f49802a331d455f503341a5fdcbde923";
 
-    public static void main(String[] args) {
+    private static int sleepDuration = 10000;
 
-            web3j = Web3j.build(new HttpService(url));
-            try {
-                Credentials credentials = WalletUtils.loadCredentials("a", key_file);
-                testTokenTransaction(web3j, credentials, fromAddress, contractAddress, toAddress, amt, decimals);
-            } catch(Exception e) {
-                System.err.println(e);
-            }
+    public TokenTransfer() {
+        Runtime.getRuntime().addShutdownHook(new ExitHandler());
     }
 
-    private static void testTokenTransaction(Web3j web3j, Credentials credentials,
+    public void run() {
+
+        web3j = Web3j.build(new HttpService(url));
+
+        try {
+            Credentials credentials = WalletUtils.loadCredentials("a", key_file);
+            testTokenTransaction(credentials, fromAddress, contractAddress, toAddress, amt, decimals);
+        } catch (Exception e) {
+            System.err.println(e);
+        }
+
+        System.out.println("Exit OK");
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+
+        TokenTransfer ctrlc = new TokenTransfer();
+        Thread t = new Thread(ctrlc);
+        t.setName("ctrl c handler");
+        t.run();
+        t.join();
+
+    }
+
+    private static Optional<TransactionReceipt> sendTransactionReceiptRequest(
+            String transactionHash) throws Exception {
+        EthGetTransactionReceipt transactionReceipt =
+                web3j.ethGetTransactionReceipt(transactionHash).sendAsync().get();
+
+        return transactionReceipt.getTransactionReceipt();
+    }
+
+    private static void testTokenTransaction(Credentials credentials,
                                              String fromAddress, String contractAddress, String toAddress, double amount, int decimals) {
         BigInteger nonce;
         EthGetTransactionCount ethGetTransactionCount = null;
@@ -98,8 +143,24 @@ public class TokenTransfer {
                 EthSendTransaction ethSendTransaction = web3j.ethSendRawTransaction(signedData).send();
                 String txHash = ethSendTransaction.getTransactionHash();
                 System.out.println(txHash);
+                // poll for transaction response via org.web3j.protocol.Web3j.ethGetTransactionReceipt(<txHash>)
+
+                Optional<TransactionReceipt> receiptOptional =
+                        sendTransactionReceiptRequest(txHash);
+
+                while (running) {
+                    if (!receiptOptional.isPresent()) {
+                        Thread.sleep(sleepDuration);
+                        receiptOptional = sendTransactionReceiptRequest(txHash);
+                    } else {
+                        break;
+                    }
+                }
+
+                System.out.println("receiptOptional=" + receiptOptional);
+
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
