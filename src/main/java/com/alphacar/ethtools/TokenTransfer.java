@@ -1,5 +1,9 @@
-package com.alpharcar.ethtools;
+package com.alphacar.ethtools;
 
+import com.alphacar.utils.AddressUtil;
+import com.alphacar.utils.ReadExcelTools;
+import com.alphacar.utils.TransferInfo;
+import net.sf.json.JSONArray;
 import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.TypeReference;
 import org.web3j.abi.datatypes.Address;
@@ -7,12 +11,12 @@ import org.web3j.abi.datatypes.Bool;
 import org.web3j.abi.datatypes.Function;
 import org.web3j.abi.datatypes.Type;
 import org.web3j.abi.datatypes.generated.Uint256;
-import org.web3j.crypto.*;
+import org.web3j.crypto.Credentials;
+import org.web3j.crypto.RawTransaction;
+import org.web3j.crypto.TransactionEncoder;
+import org.web3j.crypto.WalletUtils;
 import org.web3j.protocol.Web3j;
-import org.web3j.protocol.admin.Admin;
-import org.web3j.protocol.admin.methods.response.PersonalUnlockAccount;
 import org.web3j.protocol.core.DefaultBlockParameterName;
-import org.web3j.protocol.core.methods.request.Transaction;
 import org.web3j.protocol.core.methods.response.EthGetTransactionCount;
 import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt;
 import org.web3j.protocol.core.methods.response.EthSendTransaction;
@@ -21,17 +25,20 @@ import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.ChainId;
 import org.web3j.utils.Convert;
 import org.web3j.utils.Numeric;
+import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class TokenTransfer implements Runnable {
 
-    private static boolean running = true;
+    private volatile boolean running = true;
 
     private class ExitHandler extends Thread {
 
@@ -46,61 +53,164 @@ public class TokenTransfer implements Runnable {
 
     }
 
-    private static Web3j web3j;
+    private Web3j web3j;
 
-    private static Admin admin;
+    private String fromAddress = "";
 
-    private static String fromAddress = "0xdA83aeE0F49802a331d455f503341A5FDCbDE923";
+    private String contractAddress = "";
 
-    private static String toAddress = "0x86daa582987c76b513574919163b9c2925ef7134";
-
-    private static String contractAddress = "0x6acd91f818138c4d4184d9c8acc44ac00cbaccc0";
-
-    private static double amt = 10000;
+    private Object tokenAbi = null;
 
     private static int decimals = 18;
 
-    private static String emptyAddress = "0x0000000000000000000000000000000000000000";
+    private byte chainId = ChainId.ROPSTEN;
 
-    private static byte chainId = ChainId.ROPSTEN;
+    private String url = "https://ropsten.infura.io/4gmRz0RyQUqgK0Q1jdu5";
 
-    private static String url = "https://ropsten.infura.io/4gmRz0RyQUqgK0Q1jdu5";
-
-    private static String key_file = "/Users/leo/Documents/src_codes/alphaauto/acar_ico/web3j-tools/src/main/resources/keystore/UTC--2018-01-14T18-46-20.321874736Z--da83aee0f49802a331d455f503341a5fdcbde923";
-
-    private static String pwd = "a";
+    private Credentials credentials = null;
 
     private static int sleepDuration = 10000;
 
+    private ArrayList<TransferInfo> infos = null;
+
+    private  boolean needTransfer = false;
+
+    private ExitHandler exitHandler;
+
     public TokenTransfer() {
-        Runtime.getRuntime().addShutdownHook(new ExitHandler());
+        exitHandler = new ExitHandler();
+        Runtime.getRuntime().addShutdownHook(exitHandler);
     }
 
-    public void run() {
+    public void init(Map<String, Object> params, ArrayList<TransferInfo> infos, boolean needTransfer) {
 
+        this.needTransfer = needTransfer;
+
+        this.infos = infos;
+
+        Map<String, Object> web3_info = (Map<String, Object>)params.get("web3");
+
+        url = (String)web3_info.get("url");
         web3j = Web3j.build(new HttpService(url));
 
+        fromAddress = (String)web3_info.get("address");
+        String privateKeyPath = (String)web3_info.get("privatekey_path");
+        String password = (String)web3_info.get("password");
+
         try {
-            Credentials credentials = WalletUtils.loadCredentials(pwd, key_file);
-            testTokenTransaction(credentials, fromAddress, contractAddress, toAddress, amt, decimals);
+
+            credentials = WalletUtils.loadCredentials(password, privateKeyPath);
+
         } catch (Exception e) {
             System.err.println(e);
         }
 
-        System.out.println("Exit OK");
+        Map<String, Object> token_info = (Map<String, Object>)params.get("token");
+        contractAddress = (String)token_info.get("token_address");
+        tokenAbi = token_info.get("token_abi");
+        System.out.println(contractAddress);
+        System.out.println(tokenAbi);
+
+        JSONArray jsonArr = JSONArray.fromObject(tokenAbi);
+
+        /*
+        for(int i=0;i<jsonArr.size();i++){
+            JSONObject obj_temp = jsonArr.getJSONObject(i);
+        }
+        */
+
+    }
+
+    public void run() {
+
+        try {
+
+            if (this.infos != null) {
+
+                double total_amt = 0;
+
+                for (TransferInfo info : infos) {
+
+                    String toAddress = AddressUtil.formatAddress(info.getEthAddress());
+
+                    if (toAddress.equals("")) {
+                        System.out.println(info + " got empty address");
+                        continue;
+                    }
+                    total_amt += info.getAmount();
+
+                    System.out.println(info);
+                    if (this.needTransfer) {
+                        sendToken(credentials, fromAddress, contractAddress, toAddress, info.getAmount(), decimals);
+                    }
+                }
+
+                System.out.println("total_amt:" + total_amt);
+
+            }
+
+        } catch (Exception e) {
+            System.err.println(e);
+        }
+
+        if (web3j != null) {
+            web3j.shutdown();
+        }
+
+        Runtime.getRuntime().removeShutdownHook(exitHandler);
+        exitHandler = null;
+
+        System.out.println("-----run end!");
+
     }
 
     public static void main(String[] args) throws InterruptedException {
 
+        String fileName = "/Users/leo/Documents/src_codes/alphaauto/acar_ico/web3j-tools/src/main/resources/transfer20180929.xlsx";
+
+        if (args.length >= 1) {
+            fileName = args[0];
+        }
+
+        boolean needTransfer = false;
+
+        if (args.length >= 2) {
+            if (args[1].toLowerCase().equals("t")) {
+                needTransfer = true;
+            }
+        }
+
+        System.out.println("fileName=" + fileName);
+
+        ArrayList<TransferInfo> infos = null;
+
+        try {
+            infos = ReadExcelTools.POIReadExcel(fileName);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         TokenTransfer ctrlc = new TokenTransfer();
+
+        Yaml yaml = new Yaml();
+        InputStream inputStream = ctrlc.getClass()
+                .getClassLoader()
+                .getResourceAsStream("config.yaml");
+        Map<String, Object> obj = yaml.load(inputStream);
+
+        ctrlc.init(obj, infos,  needTransfer);
+
         Thread t = new Thread(ctrlc);
         t.setName("ctrl c handler");
-        t.run();
+        t.start();
         t.join();
+
+        System.out.println("-----after join!!!");
 
     }
 
-    private static Optional<TransactionReceipt> sendTransactionReceiptRequest(
+    private Optional<TransactionReceipt> sendTransactionReceiptRequest(
             String transactionHash) throws Exception {
         EthGetTransactionReceipt transactionReceipt =
                 web3j.ethGetTransactionReceipt(transactionHash).sendAsync().get();
@@ -108,7 +218,7 @@ public class TokenTransfer implements Runnable {
         return transactionReceipt.getTransactionReceipt();
     }
 
-    private static void testTokenTransaction(Credentials credentials,
+    private void sendToken(Credentials credentials,
                                              String fromAddress, String contractAddress, String toAddress, double amount, int decimals) {
         BigInteger nonce;
         EthGetTransactionCount ethGetTransactionCount = null;
@@ -152,7 +262,7 @@ public class TokenTransfer implements Runnable {
 
                 while (running) {
                     if (!receiptOptional.isPresent()) {
-                        Thread.sleep(sleepDuration);
+                        Thread.currentThread().sleep(sleepDuration);
                         receiptOptional = sendTransactionReceiptRequest(txHash);
                     } else {
                         break;
@@ -191,46 +301,4 @@ public class TokenTransfer implements Runnable {
         return hexValue;
     }
 
-    public static String sendTokenTransaction(String fromAddress, String password, String toAddress, String contractAddress, BigInteger amount) {
-        String txHash = null;
-
-        try {
-            PersonalUnlockAccount personalUnlockAccount = admin.personalUnlockAccount(
-                    fromAddress, password, BigInteger.valueOf(10)).send();
-            if (personalUnlockAccount.accountUnlocked()) {
-                String methodName = "transfer";
-                List<Type> inputParameters = new ArrayList<>();
-                List<TypeReference<?>> outputParameters = new ArrayList<>();
-
-                Address tAddress = new Address(toAddress);
-
-                Uint256 value = new Uint256(amount);
-                inputParameters.add(tAddress);
-                inputParameters.add(value);
-
-                TypeReference<Bool> typeReference = new TypeReference<Bool>() {
-                };
-                outputParameters.add(typeReference);
-
-                Function function = new Function(methodName, inputParameters, outputParameters);
-
-                String data = FunctionEncoder.encode(function);
-
-                EthGetTransactionCount ethGetTransactionCount = web3j
-                        .ethGetTransactionCount(fromAddress, DefaultBlockParameterName.PENDING).sendAsync().get();
-                BigInteger nonce = ethGetTransactionCount.getTransactionCount();
-                BigInteger gasPrice = Convert.toWei(BigDecimal.valueOf(5), Convert.Unit.GWEI).toBigInteger();
-
-                Transaction transaction = Transaction.createFunctionCallTransaction(fromAddress, nonce, gasPrice,
-                        BigInteger.valueOf(60000), contractAddress, data);
-
-                EthSendTransaction ethSendTransaction = web3j.ethSendTransaction(transaction).sendAsync().get();
-                txHash = ethSendTransaction.getTransactionHash();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return txHash;
-    }
 }

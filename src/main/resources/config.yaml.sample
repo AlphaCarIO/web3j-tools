@@ -2,12 +2,11 @@ web3:
   chainId: 3
   url: "https://ropsten.infura.io/4gmRz0RyQUqgK0Q1jdu5"
   address: "0xdA83aeE0F49802a331d455f503341A5FDCbDE923"
-  privatekey_path: "keystore/UTC--2018-01-14T18-46-20.321874736Z--da83aee0f49802a331d455f503341a5fdcbde923"
+  privatekey_path: "/Users/leo/Documents/src_codes/alphaauto/acar_ico/web3j-tools/target/classes/keystore/UTC--2018-01-14T18-46-20.321874736Z--da83aee0f49802a331d455f503341a5fdcbde923"
   password: "a"
   needKey: True
 
-ico:
-  account: "0xdA83aeE0F49802a331d455f503341A5FDCbDE923"
+token:
   token_address: "0x5AcF3c1C755480278A02BF6e35dc2CB88B539bfD"
   token_abi: [
   {
