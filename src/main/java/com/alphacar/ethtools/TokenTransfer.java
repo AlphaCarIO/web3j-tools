@@ -144,7 +144,7 @@ public class TokenTransfer {
 
         Map<String, Object> obj = yaml.load(inputStream);
 
-        String outputFileName = transferListFile.substring(transferListFile.lastIndexOf("/"),
+        String outputFileName = transferListFile.substring(transferListFile.lastIndexOf("/") + 1,
                 transferListFile.lastIndexOf(".")) + "_report.csv";
         tokenTransfer.init(obj, infos, needTransfer, outputFileName);
 
@@ -156,8 +156,6 @@ public class TokenTransfer {
 
         this.needTransfer = needTransfer;
 
-        this.output_file = output_file;
-
         this.infos = infos;
 
         Map<String, Object> web3_info = (Map<String, Object>) params.get("web3");
@@ -165,13 +163,19 @@ public class TokenTransfer {
         url = (String) web3_info.get("url");
         web3j = Web3j.build(new HttpService(url));
 
-        fromAddress = (String) web3_info.get("address");
-        chainId = ((Integer)web3_info.get("chainId")).byteValue();
 
-        if (chainId == '1') {
+        gasPrice = (Integer) web3_info.get("gasPrice");
+        fromAddress = (String) web3_info.get("address");
+        chainId = ((Integer) web3_info.get("chainId")).byteValue();
+
+        if (chainId == ChainId.MAINNET) {
             baseUrl = "https://www.etherscan.io/tx/";
         }
 
+        this.output_file = chainId + "_" + output_file;
+
+        System.out.println("baseUrl:" + baseUrl);
+        System.out.println("gasPrice:" + gasPrice);
         System.out.println("chainId:" + chainId);
 
         String privateKeyPath = (String) web3_info.get("privatekey_path");
@@ -218,7 +222,7 @@ public class TokenTransfer {
         contractAddress = (String) token_info.get("token_address");
         tokenAbi = token_info.get("token_abi");
         System.out.println(contractAddress);
-        System.out.println(tokenAbi);
+        //System.out.println(tokenAbi);
 
         /*
         JSONArray jsonArr = JSONArray.fromObject(tokenAbi);
@@ -241,6 +245,8 @@ public class TokenTransfer {
 
                 int counter = -1;
 
+                BigInteger nonce = getNonce();
+
                 for (TransferInfo info : infos) {
 
                     final String toAddress = AddressUtil.formatAddress(info.getEthAddress());
@@ -253,7 +259,15 @@ public class TokenTransfer {
 
                     counter += 1;
 
+                    info.setBaseUrl(this.baseUrl);
+
                     info.setFormattedEthAddress(toAddress);
+
+                    if (info.getEthAddress().equals(info.getFormattedEthAddress())) {
+                        info.setFlag("");
+                    } else {
+                        info.setFlag("***");
+                    }
 
                     info.setId(counter);
 
@@ -264,11 +278,18 @@ public class TokenTransfer {
                     System.out.println((info.getId() + 1) + "/" + infos.size() + " " + info.toString());
 
                     if (TokenTransfer.this.needTransfer) {
-                        sendToken(info.getId(), credentials, fromAddress, contractAddress, toAddress, info.getAmount(), decimals);
+
+                        sendToken(info.getId(), credentials, nonce, fromAddress,
+                                contractAddress, toAddress, info.getAmount(), decimals);
+
+                        nonce = nonce.add(BigInteger.ONE);
+
                     }
 
                     //});
                 }
+
+                updateStatus();
 
             }
 
@@ -284,14 +305,11 @@ public class TokenTransfer {
             web3j.shutdown();
         }
 
-        Runtime.getRuntime().removeShutdownHook(exitHandler);
-        exitHandler = null;
-
         File output = new File("./" + output_file);
         BufferedWriter writer = null;
         try {
             writer = new BufferedWriter(new FileWriter(output));
-            writer.write("ethAddress,formattedEthAddress,amount,receipt" + EOL);
+            writer.write("ethAddress,formattedEthAddress,flag,amount,status,receipt" + EOL);
 
             for (TransferInfo info : infos) {
                 writer.write(info.toString() + EOL);
@@ -324,8 +342,8 @@ public class TokenTransfer {
         return transactionReceipt.getTransactionReceipt();
     }
 
-    private void sendToken(int id, Credentials credentials,
-                           String fromAddress, String contractAddress, String toAddress, double amount, int decimals) {
+    private BigInteger getNonce() {
+
         BigInteger nonce;
         EthGetTransactionCount ethGetTransactionCount = null;
         try {
@@ -333,9 +351,50 @@ public class TokenTransfer {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        if (ethGetTransactionCount == null) return;
+        if (ethGetTransactionCount == null) return BigInteger.valueOf(-1);
         nonce = ethGetTransactionCount.getTransactionCount();
         System.out.println("nonce " + nonce);
+        return nonce;
+
+    }
+
+    private void updateStatus() throws Exception {
+
+        System.out.println("start updateStatus!");
+
+        if (infos != null) {
+
+            boolean allConfirmed = false;
+
+            while (!allConfirmed) {
+
+                Thread.currentThread().sleep(sleepDuration);
+
+                allConfirmed = true;
+
+                for (TransferInfo info : infos) {
+                    if (info.getTxHash() != null && !info.getTxHash().equals("")) {
+                        if (info.getStatus().equals("")) {
+                            Optional<TransactionReceipt> receiptOptional = sendTransactionReceiptRequest(info.getTxHash());
+                            if (receiptOptional.isPresent()) {
+                                info.setStatus(receiptOptional.get().getStatus());
+                            } else {
+                                allConfirmed = false;
+                            }
+                        }
+                    }
+                }
+
+                if (allConfirmed) {
+                    break;
+                }
+            }
+        }
+    }
+
+    private void sendToken(int id, Credentials credentials, BigInteger nonce,
+                           String fromAddress, String contractAddress, String toAddress, double amount, int decimals) {
+
         BigInteger gasPrice = Convert.toWei(BigDecimal.valueOf(this.gasPrice), Convert.Unit.GWEI).toBigInteger();
         BigInteger gasLimit = BigInteger.valueOf(60000);
         BigInteger value = BigInteger.ZERO;
@@ -361,30 +420,31 @@ public class TokenTransfer {
                 EthSendTransaction ethSendTransaction = web3j.ethSendRawTransaction(signedData).send();
                 String txHash = ethSendTransaction.getTransactionHash();
 
-                System.out.println("processing txHash:" + txHash);
+                System.out.println("txHash:" + txHash);
+
+                if (infos != null) {
+                    infos.get(id).setTxHash(txHash);
+                }
 
                 // poll for transaction response via org.web3j.protocol.Web3j.ethGetTransactionReceipt(<txHash>)
-
+/*
                 Optional<TransactionReceipt> receiptOptional = sendTransactionReceiptRequest(txHash);
 
                 while (running) {
                     if (!receiptOptional.isPresent()) {
                         Thread.currentThread().sleep(sleepDuration);
+                        System.out.println("receiptOptional:" + receiptOptional);
                         receiptOptional = sendTransactionReceiptRequest(txHash);
                     } else {
                         break;
                     }
                 }
 
-                lock.lock();
-                if (infos != null) {
-                    String tx_url = this.baseUrl + receiptOptional.get().getTransactionHash();
-                    infos.get(id).setReceipt(tx_url);
-                    System.out.println("tx_url:" + tx_url);
-                }
-                lock.unlock();
+                System.out.println("receiptOptional:" + receiptOptional);
+                System.out.println("2 getStatus:" + receiptOptional.get().getStatus());
 
                 //System.out.println("receiptOptional=" + receiptOptional);
+                */
             }
         } catch (Exception e) {
             e.printStackTrace();

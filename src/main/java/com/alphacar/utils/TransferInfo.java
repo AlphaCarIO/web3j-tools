@@ -5,7 +5,8 @@ public class TransferInfo {
     @Override
     public String toString() {
 
-        return String.format("%s,%s,%f,%s", getEthAddress(), getFormattedEthAddress(), getAmount(), getReceipt());
+        return String.format("%s,%s,%s,%f,%s,%s", getEthAddress(), getFormattedEthAddress(),
+                getFlag(), getAmount(), getStatus(), getBaseUrl() + getTxHash());
 
     }
 
@@ -17,7 +18,13 @@ public class TransferInfo {
 
     private String formattedEthAddress;
 
-    private String receipt;
+    private String flag;
+
+    private String status = "";
+
+    private String baseUrl;
+
+    private String txHash = null;
 
     public String getEthAddress() {
         return ethAddress;
@@ -43,12 +50,12 @@ public class TransferInfo {
         this.id = id;
     }
 
-    public String getReceipt() {
-        return receipt;
+    public String getTxHash() {
+        return txHash;
     }
 
-    public void setReceipt(String receipt) {
-        this.receipt = receipt;
+    public void setTxHash(String txHash) {
+        this.txHash = txHash;
     }
 
     public String getFormattedEthAddress() {
@@ -57,5 +64,29 @@ public class TransferInfo {
 
     public void setFormattedEthAddress(String formattedEthAddress) {
         this.formattedEthAddress = formattedEthAddress;
+    }
+
+    public String getFlag() {
+        return flag;
+    }
+
+    public void setFlag(String flag) {
+        this.flag = flag;
+    }
+
+    public String getBaseUrl() {
+        return baseUrl;
+    }
+
+    public void setBaseUrl(String baseUrl) {
+        this.baseUrl = baseUrl;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }
