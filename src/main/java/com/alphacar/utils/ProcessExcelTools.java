@@ -9,7 +9,7 @@ import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-public class ReadExcelTools {
+public class ProcessExcelTools {
 
 
     private static XSSFWorkbook readFile(String filename) throws IOException {
@@ -24,7 +24,7 @@ public class ReadExcelTools {
 
     public static ArrayList<TransferInfo> POIReadExcel(String fileName, boolean skipHeader) throws IOException {
 
-        XSSFWorkbook wb = ReadExcelTools.readFile(fileName);
+        XSSFWorkbook wb = ProcessExcelTools.readFile(fileName);
 
         ArrayList<TransferInfo> infos = new ArrayList<>();
 
