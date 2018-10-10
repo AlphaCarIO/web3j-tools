@@ -1,7 +1,6 @@
 package com.alphacar.utils;
 
-import java.io.FileInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 
 import org.apache.poi.xssf.usermodel.XSSFCell;
@@ -9,12 +8,40 @@ import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-public class ProcessExcelTools {
+public class IOUtils {
 
+    private final static String EOL = System.getProperty("line.separator");
 
     private static XSSFWorkbook readFile(String filename) throws IOException {
-
         return new XSSFWorkbook(new FileInputStream(filename));
+    }
+
+    public static void WriteResult(String output_file, double total_amt, ArrayList<TransferInfo> infos) {
+
+        File output = new File(output_file);
+        BufferedWriter writer = null;
+        try {
+            writer = new BufferedWriter(new FileWriter(output));
+            writer.write("ethAddress,formattedEthAddress,flag,amount,status,receipt" + EOL);
+
+            for (TransferInfo info : infos) {
+                writer.write(info.toString() + EOL);
+            }
+
+            writer.write(EOL + "total amount," + total_amt + EOL);
+
+            writer.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (writer != null) {
+                try {
+                    writer.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
 
     }
 
@@ -24,7 +51,7 @@ public class ProcessExcelTools {
 
     public static ArrayList<TransferInfo> POIReadExcel(String fileName, boolean skipHeader) throws IOException {
 
-        XSSFWorkbook wb = ProcessExcelTools.readFile(fileName);
+        XSSFWorkbook wb = IOUtils.readFile(fileName);
 
         ArrayList<TransferInfo> infos = new ArrayList<>();
 

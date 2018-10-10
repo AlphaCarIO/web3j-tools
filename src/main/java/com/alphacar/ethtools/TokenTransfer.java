@@ -1,45 +1,22 @@
 package com.alphacar.ethtools;
 
 import com.alphacar.utils.AddressUtil;
-import com.alphacar.utils.ProcessExcelTools;
+import com.alphacar.utils.IOUtils;
 import com.alphacar.utils.TransferInfo;
-import org.web3j.abi.FunctionEncoder;
-import org.web3j.abi.TypeReference;
-import org.web3j.abi.datatypes.*;
-import org.web3j.abi.datatypes.generated.Uint256;
+import com.alphacar.utils.Web3jHelper;
 import org.web3j.crypto.Credentials;
-import org.web3j.crypto.RawTransaction;
-import org.web3j.crypto.TransactionEncoder;
 import org.web3j.crypto.WalletUtils;
-import org.web3j.protocol.Web3j;
-import org.web3j.protocol.core.DefaultBlockParameterName;
-import org.web3j.protocol.core.methods.response.EthGetTransactionCount;
-import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt;
-import org.web3j.protocol.core.methods.response.EthSendTransaction;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
-import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.ChainId;
-import org.web3j.utils.Convert;
-import org.web3j.utils.Numeric;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
-import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class TokenTransfer {
-
-    private ExecutorService newSingleThreadExecutor = Executors.newSingleThreadExecutor();
-
-    private Lock lock = new ReentrantLock();
 
     private volatile boolean running = true;
 
@@ -56,13 +33,9 @@ public class TokenTransfer {
 
     }
 
-    private Web3j web3j;
-
     private String fromAddress = "";
 
     private String contractAddress = "";
-
-    private Object tokenAbi = null;
 
     private static int decimals = 18;
 
@@ -86,12 +59,14 @@ public class TokenTransfer {
 
     private String output_file;
 
+    private Web3jHelper w3jHelper;
+
     public TokenTransfer() {
         exitHandler = new ExitHandler();
         Runtime.getRuntime().addShutdownHook(exitHandler);
     }
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) {
 
         String configFile = "";
 
@@ -119,7 +94,7 @@ public class TokenTransfer {
         ArrayList<TransferInfo> infos = null;
 
         try {
-            infos = ProcessExcelTools.POIReadExcel(transferListFile);
+            infos = IOUtils.POIReadExcel(transferListFile);
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -135,12 +110,6 @@ public class TokenTransfer {
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-
-        /*
-        InputStream inputStream = tokenTransfer.getClass()
-                .getClassLoader()
-                .getResourceAsStream("config.yaml");
-        */
 
         Map<String, Object> obj = yaml.load(inputStream);
 
@@ -161,8 +130,8 @@ public class TokenTransfer {
         Map<String, Object> web3_info = (Map<String, Object>) params.get("web3");
 
         url = (String) web3_info.get("url");
-        web3j = Web3j.build(new HttpService(url));
 
+        w3jHelper = new Web3jHelper(url);
 
         gasPrice = (Integer) web3_info.get("gasPrice");
         fromAddress = (String) web3_info.get("address");
@@ -220,20 +189,9 @@ public class TokenTransfer {
 
         Map<String, Object> token_info = (Map<String, Object>) params.get("token");
         contractAddress = (String) token_info.get("token_address");
-        tokenAbi = token_info.get("token_abi");
         System.out.println(contractAddress);
-        //System.out.println(tokenAbi);
-
-        /*
-        JSONArray jsonArr = JSONArray.fromObject(tokenAbi);
-        for(int i=0;i<jsonArr.size();i++){
-            JSONObject obj_temp = jsonArr.getJSONObject(i);
-        }
-        */
 
     }
-
-    private final static String EOL = System.getProperty("line.separator");
 
     public void process() {
 
@@ -245,7 +203,7 @@ public class TokenTransfer {
 
                 int counter = -1;
 
-                BigInteger nonce = getNonce();
+                BigInteger nonce = w3jHelper.getNonce(fromAddress);
 
                 for (TransferInfo info : infos) {
 
@@ -271,22 +229,21 @@ public class TokenTransfer {
 
                     info.setId(counter);
 
-                    //newSingleThreadExecutor.execute(() -> {
-
                     System.out.println("--------");
-
-                    System.out.println((info.getId() + 1) + "/" + infos.size() + " " + info.toString());
 
                     if (TokenTransfer.this.needTransfer) {
 
-                        sendToken(info.getId(), credentials, nonce, fromAddress,
-                                contractAddress, toAddress, info.getAmount(), decimals);
+                        String txHash = w3jHelper.sendToken(info.getId(), credentials, nonce, chainId,
+                                gasPrice, contractAddress, toAddress, info.getAmount(), decimals);
+
+                        info.setTxHash(txHash);
 
                         nonce = nonce.add(BigInteger.ONE);
 
                     }
 
-                    //});
+                    System.out.println((info.getId() + 1) + "/" + infos.size() + " " + info.toString());
+
                 }
 
                 updateStatus();
@@ -297,64 +254,15 @@ public class TokenTransfer {
             System.err.println(e);
         }
 
-        //newSingleThreadExecutor.shutdown();
-
         System.out.println("total_amt:" + total_amt);
 
-        if (web3j != null) {
-            web3j.shutdown();
+        if (w3jHelper != null) {
+            w3jHelper.release();
         }
 
-        File output = new File("./" + output_file);
-        BufferedWriter writer = null;
-        try {
-            writer = new BufferedWriter(new FileWriter(output));
-            writer.write("ethAddress,formattedEthAddress,flag,amount,status,receipt" + EOL);
-
-            for (TransferInfo info : infos) {
-                writer.write(info.toString() + EOL);
-            }
-
-            writer.write(EOL + "total amount," + total_amt + EOL);
-
-            writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            if (writer != null) {
-                try {
-                    writer.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
+        IOUtils.WriteResult(output_file, total_amt, infos);
 
         System.out.println("-----run end!");
-
-    }
-
-    private Optional<TransactionReceipt> sendTransactionReceiptRequest(
-            String transactionHash) throws Exception {
-        EthGetTransactionReceipt transactionReceipt =
-                web3j.ethGetTransactionReceipt(transactionHash).sendAsync().get();
-
-        return transactionReceipt.getTransactionReceipt();
-    }
-
-    private BigInteger getNonce() {
-
-        BigInteger nonce;
-        EthGetTransactionCount ethGetTransactionCount = null;
-        try {
-            ethGetTransactionCount = web3j.ethGetTransactionCount(fromAddress, DefaultBlockParameterName.PENDING).send();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        if (ethGetTransactionCount == null) return BigInteger.valueOf(-1);
-        nonce = ethGetTransactionCount.getTransactionCount();
-        System.out.println("nonce " + nonce);
-        return nonce;
 
     }
 
@@ -366,7 +274,7 @@ public class TokenTransfer {
 
             boolean allConfirmed = false;
 
-            while (!allConfirmed) {
+            while (running && !allConfirmed) {
 
                 Thread.currentThread().sleep(sleepDuration);
 
@@ -375,7 +283,7 @@ public class TokenTransfer {
                 for (TransferInfo info : infos) {
                     if (info.getTxHash() != null && !info.getTxHash().equals("")) {
                         if (info.getStatus().equals("")) {
-                            Optional<TransactionReceipt> receiptOptional = sendTransactionReceiptRequest(info.getTxHash());
+                            Optional<TransactionReceipt> receiptOptional = w3jHelper.sendTransactionReceiptRequest(info.getTxHash());
                             if (receiptOptional.isPresent()) {
                                 info.setStatus(receiptOptional.get().getStatus());
                             } else {
@@ -390,91 +298,6 @@ public class TokenTransfer {
                 }
             }
         }
-    }
-
-    private void sendToken(int id, Credentials credentials, BigInteger nonce,
-                           String fromAddress, String contractAddress, String toAddress, double amount, int decimals) {
-
-        BigInteger gasPrice = Convert.toWei(BigDecimal.valueOf(this.gasPrice), Convert.Unit.GWEI).toBigInteger();
-        BigInteger gasLimit = BigInteger.valueOf(60000);
-        BigInteger value = BigInteger.ZERO;
-        //token转账参数
-        String methodName = "transfer";
-        List<Type> inputParameters = new ArrayList<>();
-        List<TypeReference<?>> outputParameters = new ArrayList<>();
-        Address tAddress = new Address(toAddress);
-        Uint256 tokenValue = new Uint256(BigDecimal.valueOf(amount).multiply(BigDecimal.TEN.pow(decimals)).toBigInteger());
-        inputParameters.add(tAddress);
-        inputParameters.add(tokenValue);
-        TypeReference<Bool> typeReference = new TypeReference<Bool>() {
-        };
-        outputParameters.add(typeReference);
-        Function function = new Function(methodName, inputParameters, outputParameters);
-        String data = FunctionEncoder.encode(function);
-
-        String signedData;
-        try {
-
-            signedData = signTransaction(nonce, gasPrice, gasLimit, contractAddress, value, data, chainId, credentials);
-            if (signedData != null) {
-                EthSendTransaction ethSendTransaction = web3j.ethSendRawTransaction(signedData).send();
-                String txHash = ethSendTransaction.getTransactionHash();
-
-                System.out.println("txHash:" + txHash);
-
-                if (infos != null) {
-                    infos.get(id).setTxHash(txHash);
-                }
-
-                // poll for transaction response via org.web3j.protocol.Web3j.ethGetTransactionReceipt(<txHash>)
-/*
-                Optional<TransactionReceipt> receiptOptional = sendTransactionReceiptRequest(txHash);
-
-                while (running) {
-                    if (!receiptOptional.isPresent()) {
-                        Thread.currentThread().sleep(sleepDuration);
-                        System.out.println("receiptOptional:" + receiptOptional);
-                        receiptOptional = sendTransactionReceiptRequest(txHash);
-                    } else {
-                        break;
-                    }
-                }
-
-                System.out.println("receiptOptional:" + receiptOptional);
-                System.out.println("2 getStatus:" + receiptOptional.get().getStatus());
-
-                //System.out.println("receiptOptional=" + receiptOptional);
-                */
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            lock.unlock();
-        }
-    }
-
-    /**
-     * 签名交易
-     */
-    public static String signTransaction(BigInteger nonce, BigInteger gasPrice, BigInteger gasLimit, String
-            to,
-                                         BigInteger value, String data, byte chainId, Credentials credentials) throws IOException {
-        byte[] signedMessage;
-        RawTransaction rawTransaction = RawTransaction.createTransaction(
-                nonce,
-                gasPrice,
-                gasLimit,
-                to,
-                value,
-                data);
-
-        if (chainId > ChainId.NONE) {
-            signedMessage = TransactionEncoder.signMessage(rawTransaction, chainId, credentials);
-        } else {
-            signedMessage = TransactionEncoder.signMessage(rawTransaction, credentials);
-        }
-
-        String hexValue = Numeric.toHexString(signedMessage);
-        return hexValue;
     }
 
 }
