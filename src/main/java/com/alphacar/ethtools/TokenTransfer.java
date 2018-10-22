@@ -13,6 +13,7 @@ import org.yaml.snakeyaml.Yaml;
 import java.io.*;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -93,6 +94,8 @@ public class TokenTransfer {
     private int sleepDuration = 3000;
 
     private ArrayList<TransferInfo> infos = null;
+
+    private Map<String, String> extraInfos = new HashMap<>();
 
     private boolean needTransfer = false;
 
@@ -281,6 +284,8 @@ public class TokenTransfer {
                     System.exit(-1);
                 }
 
+                extraInfos.put("totalBalance", String.format("%.04f", tb));
+
                 BigInteger nonce = w3jHelper.getNonce(fromAddress);
 
                 for (TransferInfo info : infos) {
@@ -307,10 +312,9 @@ public class TokenTransfer {
 
                 }
 
-                System.out.println("total_amt:" + total_amt);
+                extraInfos.put("total_amt", String.format("%.04f", total_amt));
 
-                IOUtils.WriteResult(output_file + "_txs.csv",
-                        total_amt, 0, 0, infos);
+                IOUtils.WriteResult(output_file + "_txs.csv", infos, extraInfos);
 
                 System.out.println("all_amt:" + (total_amt + errAmt) + "   error amt:" + errAmt);
                 System.out.println("total count:" + infos.size() + " txs.");
@@ -320,6 +324,7 @@ public class TokenTransfer {
                 long endTime = System.currentTimeMillis();
 
                 long sendTime =  (endTime - startTime);
+                extraInfos.put("sendTime", String.format("%d", sendTime));
 
                 System.out.println("sendToken time:" + sendTime + "ms");
 
@@ -330,11 +335,11 @@ public class TokenTransfer {
                 endTime = System.currentTimeMillis();
 
                 long updateTime =  (endTime - startTime);
+                extraInfos.put("updateTime", String.format("%d", updateTime));
 
                 System.out.println("updateStatus time:" + updateTime+ "ms");
 
-                IOUtils.WriteResult(output_file + "_report.csv"
-                        , total_amt, sendTime, updateTime, infos);
+                IOUtils.WriteResult(output_file + "_report.csv", infos, extraInfos);
 
             }
 

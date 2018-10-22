@@ -2,22 +2,47 @@ package com.alphacar.utils;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Map;
+import java.util.TreeMap;
 
 import org.apache.poi.xssf.usermodel.XSSFCell;
 import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-public class IOUtils {
 
+class MapKeyComparator implements Comparator<String> {
+
+    @Override
+    public int compare(String str1, String str2) {
+        return str1.compareTo(str2);
+    }
+
+}
+
+public class IOUtils {
     private final static String EOL = System.getProperty("line.separator");
 
     private static XSSFWorkbook readFile(String filename) throws IOException {
         return new XSSFWorkbook(new FileInputStream(filename));
     }
 
-    public static void WriteResult(String output_file, double total_amt, long sendTime,
-                                   long updateTime, ArrayList<TransferInfo> infos) {
+    private static Map<String, String> sortMapByKey(Map<String, String> map) {
+        if (map == null || map.isEmpty()) {
+            return null;
+        }
+
+        Map<String, String> sortMap = new TreeMap<String, String>(
+                new MapKeyComparator());
+
+        sortMap.putAll(map);
+
+        return sortMap;
+    }
+
+    public static void WriteResult(String output_file,
+                                   ArrayList<TransferInfo> infos, Map<String, String> extraInfos) {
 
         File output = new File(output_file);
         BufferedWriter writer = null;
@@ -29,10 +54,15 @@ public class IOUtils {
                 writer.write(info.toString() + EOL);
             }
 
-            writer.write(EOL + "total amount," + total_amt
-                    + ",send time," + sendTime + " ms,update time," + updateTime + " ms" + EOL);
+            if (extraInfos != null && extraInfos.size() > 0) {
+                Map<String, String> resultMap = sortMapByKey(extraInfos);
+                for (Map.Entry<String, String> entry : resultMap.entrySet()) {
+                    writer.write(entry.getKey() + "," + entry.getValue() + EOL);
+                }
+            }
 
             writer.close();
+
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
