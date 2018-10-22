@@ -10,13 +10,13 @@ public class TransferInfo {
 
     }
 
-    private String ethAddress;
+    private String ethAddress = "";
 
-    private double amount;
+    private double amount = 0;
 
-    private int id;
+    private int id = -1;
 
-    private String formattedEthAddress;
+    private String formattedEthAddress = "";
 
     private String flag;
 

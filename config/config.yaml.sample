@@ -5,6 +5,8 @@ web3:
   privatekey_path: "keystore/UTC--2018-01-14T18-46-20.321874736Z--da83aee0f49802a331d455f503341a5fdcbde923"
   password: "a"
   needKey: True
+  gasPerTx: 52419
+  gasPrice: 4
 
 token:
   token_address: "0x5AcF3c1C755480278A02BF6e35dc2CB88B539bfD"

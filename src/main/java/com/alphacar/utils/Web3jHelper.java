@@ -1,6 +1,7 @@
 package com.alphacar.utils;
 
 import org.web3j.abi.FunctionEncoder;
+import org.web3j.abi.FunctionReturnDecoder;
 import org.web3j.abi.TypeReference;
 import org.web3j.abi.datatypes.Address;
 import org.web3j.abi.datatypes.Bool;
@@ -12,10 +13,8 @@ import org.web3j.crypto.RawTransaction;
 import org.web3j.crypto.TransactionEncoder;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameterName;
-import org.web3j.protocol.core.methods.response.EthGetTransactionCount;
-import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt;
-import org.web3j.protocol.core.methods.response.EthSendTransaction;
-import org.web3j.protocol.core.methods.response.TransactionReceipt;
+import org.web3j.protocol.core.methods.request.Transaction;
+import org.web3j.protocol.core.methods.response.*;
 import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.ChainId;
 import org.web3j.utils.Convert;
@@ -60,14 +59,45 @@ public class Web3jHelper {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        if (ethGetTransactionCount == null) return BigInteger.valueOf(-1);
+
+        if (ethGetTransactionCount == null) {
+            return BigInteger.valueOf(-1);
+        }
         nonce = ethGetTransactionCount.getTransactionCount();
         System.out.println("nonce " + nonce);
         return nonce;
 
     }
 
-    public String sendToken(int id, Credentials credentials, BigInteger nonce, byte chainId, int _gasPrice,
+    public BigInteger getTokenBalance(String contractAddress, String fromAddress) {
+
+        String methodName = "balanceOf";
+        List<Type> inputParameters = new ArrayList<>();
+        List<TypeReference<?>> outputParameters = new ArrayList<>();
+        Address address = new Address(fromAddress);
+        inputParameters.add(address);
+
+        TypeReference<Uint256> typeReference = new TypeReference<Uint256>() {
+        };
+
+        outputParameters.add(typeReference);
+        Function function = new Function(methodName, inputParameters, outputParameters);
+        String data = FunctionEncoder.encode(function);
+        Transaction transaction = Transaction.createEthCallTransaction(fromAddress, contractAddress, data);
+
+        EthCall ethCall;
+        BigInteger balanceValue = BigInteger.ZERO;
+        try {
+            ethCall = web3j.ethCall(transaction, DefaultBlockParameterName.LATEST).send();
+            List<Type> results = FunctionReturnDecoder.decode(ethCall.getValue(), function.getOutputParameters());
+            balanceValue = (BigInteger) results.get(0).getValue();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return balanceValue;
+    }
+
+        public String sendToken(int id, Credentials credentials, BigInteger nonce, byte chainId, int _gasPrice,
                             String contractAddress, String toAddress, double amount, int decimals) {
 
         BigInteger gasPrice = Convert.toWei(BigDecimal.valueOf(_gasPrice), Convert.Unit.GWEI).toBigInteger();

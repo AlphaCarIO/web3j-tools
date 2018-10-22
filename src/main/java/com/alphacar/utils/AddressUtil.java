@@ -32,13 +32,20 @@ public class AddressUtil {
         String rawAddressTemp = rawAddress.toLowerCase();
         rawAddressTemp = rawAddressTemp.replace(".eth", "");
 
-        if (!rawAddressTemp.startsWith("0x") || rawAddressTemp.length() != 42) {
+        if (!rawAddressTemp.startsWith("0x")) {
+            System.out.println("not startsWith 0x! rawAddressTemp:" + rawAddressTemp);
+            return "";
+        }
+
+        if (rawAddressTemp.length() != 42) {
+            System.out.println("not 42! rawAddressTemp:" + rawAddressTemp);
             return "";
         }
 
         String temp = checkedAddress(rawAddressTemp);
 
         if (!checkedAddress(temp).equals(temp)) {
+            System.out.println("checkedAddress failed");
             return "";
         }
 

@@ -16,16 +16,55 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
 
+class ErrorInfo {
+
+    private String addr;
+
+    private int num;
+
+    private double amt;
+
+    @Override
+    public String toString() {
+        return "(num:" + num + " addr:" + addr + " amt:" + amt + ")";
+    }
+
+    public String getAddr() {
+        return addr;
+    }
+
+    public void setAddr(String addr) {
+        this.addr = addr;
+    }
+
+    public int getNum() {
+        return num;
+    }
+
+    public void setNum(int num) {
+        this.num = num;
+    }
+
+    public double getAmt() {
+        return amt;
+    }
+
+    public void setAmt(double amt) {
+        this.amt = amt;
+    }
+}
+
 public class TokenTransfer {
 
     private volatile boolean running = true;
 
     private class ExitHandler extends Thread {
 
-        public ExitHandler() {
+        ExitHandler() {
             super("Exit Handler");
         }
 
+        @Override
         public void run() {
             System.out.println("Set exit");
             running = false;
@@ -37,11 +76,13 @@ public class TokenTransfer {
 
     private String contractAddress = "";
 
-    private static int decimals = 18;
+    private int decimals = 18;
 
     private byte chainId = ChainId.ROPSTEN;
 
     private int gasPrice = 10;
+
+    private int gasPerTx = -1;
 
     private String baseUrl = "https://ropsten.etherscan.io/tx/";
 
@@ -49,20 +90,20 @@ public class TokenTransfer {
 
     private Credentials credentials = null;
 
-    private static int sleepDuration = 5000;
+    private int sleepDuration = 3000;
 
     private ArrayList<TransferInfo> infos = null;
 
     private boolean needTransfer = false;
 
-    private ExitHandler exitHandler;
-
     private String output_file;
 
     private Web3jHelper w3jHelper;
 
+    private ArrayList<ErrorInfo> errorInfos = new ArrayList<>();
+
     public TokenTransfer() {
-        exitHandler = new ExitHandler();
+        ExitHandler exitHandler = new ExitHandler();
         Runtime.getRuntime().addShutdownHook(exitHandler);
     }
 
@@ -114,7 +155,7 @@ public class TokenTransfer {
         Map<String, Object> obj = yaml.load(inputStream);
 
         String outputFileName = transferListFile.substring(transferListFile.lastIndexOf("/") + 1,
-                transferListFile.lastIndexOf(".")) + "_report.csv";
+                transferListFile.lastIndexOf("."));
         tokenTransfer.init(obj, infos, needTransfer, outputFileName);
 
         tokenTransfer.process();
@@ -134,6 +175,7 @@ public class TokenTransfer {
         w3jHelper = new Web3jHelper(url);
 
         gasPrice = (Integer) web3_info.get("gasPrice");
+        gasPerTx = (Integer) web3_info.get("gasPerTx");
         fromAddress = (String) web3_info.get("address");
         chainId = ((Integer) web3_info.get("chainId")).byteValue();
 
@@ -157,38 +199,14 @@ public class TokenTransfer {
 
             keyFile = new File(privateKeyPath);
 
-            /*
-
-            if (privateKeyPath.startsWith("/")) {
-                keyFile = new File(privateKeyPath);
-            } else {
-                InputStream is = this.getClass().getClassLoader()
-                        .getResourceAsStream("config.yaml");
-
-                byte[] buffer = new byte[is.available()];
-                is.read(buffer);
-
-                keyFile = new File("config.tmp");
-                OutputStream outStream = new FileOutputStream(keyFile);
-                outStream.write(buffer);
-
-                markDel = true;
-            }
-
-            */
-
             credentials = WalletUtils.loadCredentials(password, keyFile);
-
-            if (markDel) {
-                keyFile.delete();
-            }
 
         } catch (Exception e) {
             System.err.println(e);
         }
 
-        Map<String, Object> token_info = (Map<String, Object>) params.get("token");
-        contractAddress = (String) token_info.get("token_address");
+        Map<String, Object> tokenInfo = (Map<String, Object>) params.get("token");
+        contractAddress = (String) tokenInfo.get("token_address");
         System.out.println(contractAddress);
 
     }
@@ -197,22 +215,30 @@ public class TokenTransfer {
 
         double total_amt = 0;
 
+        double errAmt = 0;
+
         try {
 
             if (this.infos != null) {
 
-                int counter = -1;
+                long startTime = System.currentTimeMillis();
 
-                BigInteger nonce = w3jHelper.getNonce(fromAddress);
+                int counter = -1;
 
                 for (TransferInfo info : infos) {
 
                     final String toAddress = AddressUtil.formatAddress(info.getEthAddress());
 
-                    if (toAddress.equals("")) {
+                    if ("".equals(toAddress)) {
                         System.out.println(info + " got empty address");
+                        ErrorInfo error = new ErrorInfo();
+                        error.setAddr(info.getEthAddress());
+                        error.setNum(counter);
+                        error.setAmt(info.getAmount());
+                        errorInfos.add(error);
                         continue;
                     }
+
                     total_amt += info.getAmount();
 
                     counter += 1;
@@ -228,25 +254,87 @@ public class TokenTransfer {
                     }
 
                     info.setId(counter);
+                }
 
-                    System.out.println("--------");
+                if (errorInfos.size() > 0) {
+                    System.out.println("transfer list has errors!");
+
+                    for (ErrorInfo errInfo: errorInfos) {
+                        System.out.println(errInfo);
+                        errAmt += errInfo.getAmt();
+                    }
+
+                    System.exit(-1);
+                }
+
+                BigInteger totalBalance = w3jHelper.getTokenBalance(contractAddress, this.fromAddress);
+
+                int offset = 4;
+
+                double tb = totalBalance.divide(BigInteger.valueOf(10).pow(decimals - offset)).doubleValue() / (Math.pow(10, offset));
+
+                System.out.println("fromAddress:" + fromAddress + " totalBalance:" + String.format("%.04f", tb));
+                System.out.println(String.format("%.04f", total_amt) + " to be sent!");
+
+                if (tb < total_amt) {
+                    System.out.println("buffer account don't have enough token!");
+                    System.exit(-1);
+                }
+
+                BigInteger nonce = w3jHelper.getNonce(fromAddress);
+
+                for (TransferInfo info : infos) {
 
                     if (TokenTransfer.this.needTransfer) {
 
-                        String txHash = w3jHelper.sendToken(info.getId(), credentials, nonce, chainId,
-                                gasPrice, contractAddress, toAddress, info.getAmount(), decimals);
+                        if (!"".equals(info.getFormattedEthAddress())) {
 
-                        info.setTxHash(txHash);
+                            String txHash = w3jHelper.sendToken(info.getId(), credentials, nonce, chainId,
+                                    gasPrice, contractAddress, info.getFormattedEthAddress(),
+                                    info.getAmount(), decimals);
+
+                            info.setTxHash(txHash);
+
+                            System.out.println("just sent " + info.getAmount()
+                                    + " token to " + info.getFormattedEthAddress()
+                                    + " (" + (info.getId() + 1) + "/" + infos.size() + ").");
+
+                        }
 
                         nonce = nonce.add(BigInteger.ONE);
 
                     }
 
-                    System.out.println((info.getId() + 1) + "/" + infos.size() + " " + info.toString());
-
                 }
 
+                System.out.println("total_amt:" + total_amt);
+
+                IOUtils.WriteResult(output_file + "_txs.csv",
+                        total_amt, 0, 0, infos);
+
+                System.out.println("all_amt:" + (total_amt + errAmt) + "   error amt:" + errAmt);
+                System.out.println("total count:" + infos.size() + " txs.");
+                System.out.println("gas per tx:" + gasPrice * gasPerTx * 1e-9 + " ether");
+                System.out.println("total gas:" + infos.size() * gasPrice * gasPerTx * 1e-9 + " ether.");
+
+                long endTime = System.currentTimeMillis();
+
+                long sendTime =  (endTime - startTime);
+
+                System.out.println("sendToken time:" + sendTime + "ms");
+
+                startTime = endTime;
+
                 updateStatus();
+
+                endTime = System.currentTimeMillis();
+
+                long updateTime =  (endTime - startTime);
+
+                System.out.println("updateStatus time:" + updateTime+ "ms");
+
+                IOUtils.WriteResult(output_file + "_report.csv"
+                        , total_amt, sendTime, updateTime, infos);
 
             }
 
@@ -254,19 +342,15 @@ public class TokenTransfer {
             System.err.println(e);
         }
 
-        System.out.println("total_amt:" + total_amt);
-
         if (w3jHelper != null) {
             w3jHelper.release();
         }
-
-        IOUtils.WriteResult(output_file, total_amt, infos);
 
         System.out.println("-----run end!");
 
     }
 
-    private void updateStatus() throws Exception {
+    private void updateStatus() {
 
         System.out.println("start updateStatus!");
 
@@ -276,18 +360,30 @@ public class TokenTransfer {
 
             while (running && !allConfirmed) {
 
-                Thread.currentThread().sleep(sleepDuration);
+                try {
+                    Thread.currentThread().sleep(sleepDuration);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
 
                 allConfirmed = true;
+
+                int remaining_count = 0;
 
                 for (TransferInfo info : infos) {
                     if (info.getTxHash() != null && !info.getTxHash().equals("")) {
                         if (info.getStatus().equals("")) {
-                            Optional<TransactionReceipt> receiptOptional = w3jHelper.sendTransactionReceiptRequest(info.getTxHash());
-                            if (receiptOptional.isPresent()) {
+                            Optional<TransactionReceipt> receiptOptional = null;
+                            try {
+                                receiptOptional = w3jHelper.sendTransactionReceiptRequest(info.getTxHash());
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                            if (receiptOptional != null && receiptOptional.isPresent()) {
                                 info.setStatus(receiptOptional.get().getStatus());
                             } else {
                                 allConfirmed = false;
+                                remaining_count++;
                             }
                         }
                     }
@@ -296,6 +392,7 @@ public class TokenTransfer {
                 if (allConfirmed) {
                     break;
                 }
+                System.out.println("remaining unconfirmed tx num:" + remaining_count);
             }
         }
     }

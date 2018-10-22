@@ -16,7 +16,8 @@ public class IOUtils {
         return new XSSFWorkbook(new FileInputStream(filename));
     }
 
-    public static void WriteResult(String output_file, double total_amt, ArrayList<TransferInfo> infos) {
+    public static void WriteResult(String output_file, double total_amt, long sendTime,
+                                   long updateTime, ArrayList<TransferInfo> infos) {
 
         File output = new File(output_file);
         BufferedWriter writer = null;
@@ -28,7 +29,8 @@ public class IOUtils {
                 writer.write(info.toString() + EOL);
             }
 
-            writer.write(EOL + "total amount," + total_amt + EOL);
+            writer.write(EOL + "total amount," + total_amt
+                    + ",send time," + sendTime + " ms,update time," + updateTime + " ms" + EOL);
 
             writer.close();
         } catch (IOException e) {
