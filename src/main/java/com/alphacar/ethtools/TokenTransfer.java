@@ -220,6 +220,22 @@ public class TokenTransfer {
 
         double errAmt = 0;
 
+        if (TokenTransfer.this.needTransfer) {
+            try {
+                System.out.println("transfer now ? (yes/NO)");
+                BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+                String str = br.readLine();
+                if (!(str != null && "yes".equals(str.toLowerCase()))) {
+                    System.out.println("reject to transfer! exit!");
+                    System.exit(0);
+                } else {
+                    System.out.println("starting to transfer token!");
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
         try {
 
             if (this.infos != null) {
@@ -262,7 +278,7 @@ public class TokenTransfer {
                 if (errorInfos.size() > 0) {
                     System.out.println("transfer list has errors!");
 
-                    for (ErrorInfo errInfo: errorInfos) {
+                    for (ErrorInfo errInfo : errorInfos) {
                         System.out.println(errInfo);
                         errAmt += errInfo.getAmt();
                     }
@@ -313,18 +329,23 @@ public class TokenTransfer {
                 }
 
                 extraInfos.put("total_amt", String.format("%.04f", total_amt));
-
-                IOUtils.WriteResult(output_file + "_txs.csv", infos, extraInfos);
+                double gasEth = gasPrice * gasPerTx * 1e-9;
 
                 System.out.println("all_amt:" + (total_amt + errAmt) + "   error amt:" + errAmt);
                 System.out.println("total count:" + infos.size() + " txs.");
-                System.out.println("gas per tx:" + gasPrice * gasPerTx * 1e-9 + " ether");
-                System.out.println("total gas:" + infos.size() * gasPrice * gasPerTx * 1e-9 + " ether.");
+                System.out.println("eth per tx:" + String.format("%.06f", gasEth) + " ether");
+                System.out.println("total gas(eth):" + String.format("%.06f", infos.size() * gasEth)  + " ether.");
+
+                extraInfos.put("total count", String.format("%d", infos.size()));
+                extraInfos.put("eth per tx", String.format("%.06f", gasEth) + " eth");
+                extraInfos.put("total gas(eth)", String.format("%.06f", gasEth * infos.size()) + " eth");
 
                 long endTime = System.currentTimeMillis();
 
-                long sendTime =  (endTime - startTime);
-                extraInfos.put("sendTime", String.format("%d", sendTime));
+                long sendTime = (endTime - startTime);
+                extraInfos.put("sendTime", String.format("%d", sendTime) + " ms");
+
+                IOUtils.WriteResult(output_file + "_txs.csv", infos, extraInfos);
 
                 System.out.println("sendToken time:" + sendTime + "ms");
 
@@ -334,10 +355,10 @@ public class TokenTransfer {
 
                 endTime = System.currentTimeMillis();
 
-                long updateTime =  (endTime - startTime);
-                extraInfos.put("updateTime", String.format("%d", updateTime));
+                long updateTime = (endTime - startTime);
+                extraInfos.put("updateTime", String.format("%d", updateTime) + " ms");
 
-                System.out.println("updateStatus time:" + updateTime+ "ms");
+                System.out.println("updateStatus time:" + updateTime + "ms");
 
                 IOUtils.WriteResult(output_file + "_report.csv", infos, extraInfos);
 
