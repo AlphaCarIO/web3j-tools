@@ -28,3 +28,4 @@ target
 *.yaml
 *.xlsx
 *.csv
+.DS_Store
