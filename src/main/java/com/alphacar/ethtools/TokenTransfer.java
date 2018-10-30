@@ -302,11 +302,11 @@ public class TokenTransfer {
 
                 extraInfos.put("totalBalance", String.format("%.04f", tb));
 
-                BigInteger nonce = w3jHelper.getNonce(fromAddress);
+                if (TokenTransfer.this.needTransfer) {
 
-                for (TransferInfo info : infos) {
+                    BigInteger nonce = w3jHelper.getNonce(fromAddress);
 
-                    if (TokenTransfer.this.needTransfer) {
+                    for (TransferInfo info : infos) {
 
                         if (!"".equals(info.getFormattedEthAddress())) {
 
@@ -320,9 +320,9 @@ public class TokenTransfer {
                                     + " token to " + info.getFormattedEthAddress()
                                     + " (" + (info.getId() + 1) + "/" + infos.size() + ").");
 
-                        }
+                            nonce = nonce.add(BigInteger.ONE);
 
-                        nonce = nonce.add(BigInteger.ONE);
+                        }
 
                     }
 
@@ -334,10 +334,10 @@ public class TokenTransfer {
                 System.out.println("all_amt:" + (total_amt + errAmt) + "   error amt:" + errAmt);
                 System.out.println("total count:" + infos.size() + " txs.");
                 System.out.println("eth per tx:" + String.format("%.06f", gasEth) + " ether");
-                System.out.println("total gas(eth):" + String.format("%.06f", infos.size() * gasEth)  + " ether.");
+                System.out.println("total gas(eth):" + String.format("%.06f", infos.size() * gasEth) + " ether.");
 
                 extraInfos.put("total count", String.format("%d", infos.size()));
-                extraInfos.put("eth per tx", String.format("%.06f", gasEth) + " eth");
+                extraInfos.put("gas(eth) per tx", String.format("%.06f", gasEth) + " eth");
                 extraInfos.put("total gas(eth)", String.format("%.06f", gasEth * infos.size()) + " eth");
 
                 long endTime = System.currentTimeMillis();
