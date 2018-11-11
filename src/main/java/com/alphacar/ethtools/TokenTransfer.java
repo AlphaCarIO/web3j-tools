@@ -27,7 +27,7 @@ class ErrorInfo {
 
     @Override
     public String toString() {
-        return "(num:" + num + " addr:" + addr + " amt:" + amt + ")";
+        return "(num:" + getNum() + " addr:" + getAddr() + " amt:" + getAmt() + ")";
     }
 
     public String getAddr() {
@@ -176,6 +176,11 @@ public class TokenTransfer {
         url = (String) web3_info.get("url");
 
         w3jHelper = new Web3jHelper(url);
+
+        int tempSleepDuration = (Integer) web3_info.get("sleepDuration");
+        if (tempSleepDuration > 1000) {
+            sleepDuration = tempSleepDuration;
+        }
 
         gasPrice = (Integer) web3_info.get("gasPrice");
         gasPerTx = (Integer) web3_info.get("gasPerTx");

@@ -7,6 +7,7 @@ web3:
   needKey: True
   gasPerTx: 52419
   gasPrice: 4
+  sleepDuration: 3000
 
 token:
   token_address: "0x5AcF3c1C755480278A02BF6e35dc2CB88B539bfD"
