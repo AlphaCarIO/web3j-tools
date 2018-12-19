@@ -55,9 +55,14 @@ class ErrorInfo {
     }
 }
 
+/**
+ * @author leo
+ */
 public class TokenTransfer {
 
     private volatile boolean running = true;
+
+    private static final String CONFIRM = "yes";
 
     private class ExitHandler extends Thread {
 
@@ -127,7 +132,7 @@ public class TokenTransfer {
         boolean needTransfer = false;
 
         if (args.length >= 3) {
-            if (args[2].toLowerCase().equals("t")) {
+            if ("t".equals(args[2].toLowerCase())) {
                 needTransfer = true;
             }
         }
@@ -201,11 +206,7 @@ public class TokenTransfer {
         String password = (String) web3_info.get("password");
 
         try {
-            File keyFile = null;
-
-            boolean markDel = false;
-
-            keyFile = new File(privateKeyPath);
+            File keyFile = new File(privateKeyPath);
 
             credentials = WalletUtils.loadCredentials(password, keyFile);
 
@@ -230,7 +231,7 @@ public class TokenTransfer {
                 System.out.println("transfer now ? (yes/NO)");
                 BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
                 String str = br.readLine();
-                if (!(str != null && "yes".equals(str.toLowerCase()))) {
+                if (!(str != null && CONFIRM.equals(str.toLowerCase()))) {
                     System.out.println("reject to transfer! exit!");
                     System.exit(0);
                 } else {
@@ -336,7 +337,7 @@ public class TokenTransfer {
                 extraInfos.put("total_amt", String.format("%.04f", total_amt));
                 double gasEth = gasPrice * gasPerTx * 1e-9;
 
-                System.out.println("all_amt:" + (total_amt + errAmt) + "   error amt:" + errAmt);
+                System.out.println("all_amt:" + String.format("%.04f", (total_amt + errAmt)) + "   error amt:" + errAmt);
                 System.out.println("total count:" + infos.size() + " txs.");
                 System.out.println("eth per tx:" + String.format("%.06f", gasEth) + " ether");
                 System.out.println("total gas(eth):" + String.format("%.06f", infos.size() * gasEth) + " ether.");
@@ -399,23 +400,26 @@ public class TokenTransfer {
 
                 allConfirmed = true;
 
-                int remaining_count = 0;
+                int remaining_count = infos.size();
 
                 for (TransferInfo info : infos) {
-                    if (info.getTxHash() != null && !info.getTxHash().equals("")) {
-                        if (info.getStatus().equals("")) {
-                            Optional<TransactionReceipt> receiptOptional = null;
+                    if (info.getTxHash() != null && !"".equals(info.getTxHash())) {
+                        if ("".equals(info.getStatus())) {
+                            Optional<TransactionReceipt> receiptOptional = Optional.empty();
                             try {
                                 receiptOptional = w3jHelper.sendTransactionReceiptRequest(info.getTxHash());
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
-                            if (receiptOptional != null && receiptOptional.isPresent()) {
+                            if (receiptOptional.isPresent()) {
                                 info.setStatus(receiptOptional.get().getStatus());
+                                remaining_count--;
                             } else {
                                 allConfirmed = false;
-                                remaining_count++;
+                                break;
                             }
+                        } else if ("0x1".equals(info.getStatus())) {
+                            remaining_count--;
                         }
                     }
                 }
