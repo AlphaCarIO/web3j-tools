@@ -1,9 +1,6 @@
 package com.alphacar.ethtools;
 
-import com.alphacar.utils.AddressUtil;
-import com.alphacar.utils.IOUtils;
-import com.alphacar.utils.TransferInfo;
-import com.alphacar.utils.Web3jHelper;
+import com.alphacar.utils.*;
 import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
@@ -12,48 +9,7 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-
-class ErrorInfo {
-
-    private String addr;
-
-    private int num;
-
-    private double amt;
-
-    @Override
-    public String toString() {
-        return "(num:" + getNum() + " addr:" + getAddr() + " amt:" + getAmt() + ")";
-    }
-
-    public String getAddr() {
-        return addr;
-    }
-
-    public void setAddr(String addr) {
-        this.addr = addr;
-    }
-
-    public int getNum() {
-        return num;
-    }
-
-    public void setNum(int num) {
-        this.num = num;
-    }
-
-    public double getAmt() {
-        return amt;
-    }
-
-    public void setAmt(double amt) {
-        this.amt = amt;
-    }
-}
+import java.util.*;
 
 /**
  * @author leo
@@ -82,8 +38,6 @@ public class TokenTransfer {
 
     private String contractAddress = "";
 
-    private int decimals = 18;
-
     private byte chainId = ChainId.ROPSTEN;
 
     private int gasPrice = 10;
@@ -98,17 +52,19 @@ public class TokenTransfer {
 
     private int sleepDuration = 3000;
 
-    private ArrayList<TransferInfo> infos = null;
+    private List<TransferInfo> infos = null;
 
     private Map<String, String> extraInfos = new HashMap<>();
 
     private boolean needTransfer = false;
 
-    private String output_file;
+    private boolean needUpdate = true;
+
+    private String outputFile = null;
 
     private Web3jHelper w3jHelper;
 
-    private ArrayList<ErrorInfo> errorInfos = new ArrayList<>();
+    private List<ErrorInfo> errorInfos = new ArrayList<>();
 
     public TokenTransfer() {
         ExitHandler exitHandler = new ExitHandler();
@@ -131,9 +87,19 @@ public class TokenTransfer {
 
         boolean needTransfer = false;
 
+        boolean needUpdate = false;
+
         if (args.length >= 3) {
-            if ("t".equals(args[2].toLowerCase())) {
+            String param = args[2].toLowerCase();
+            if ("tu".equals(param)) {
                 needTransfer = true;
+                needUpdate = true;
+            } else if ("t".equals(param)) {
+                needTransfer = true;
+                needUpdate = false;
+            } else if ("u".equals(param)) {
+                needTransfer = false;
+                needUpdate = true;
             }
         }
 
@@ -164,15 +130,19 @@ public class TokenTransfer {
 
         String outputFileName = transferListFile.substring(transferListFile.lastIndexOf("/") + 1,
                 transferListFile.lastIndexOf("."));
-        tokenTransfer.init(obj, infos, needTransfer, outputFileName);
+        tokenTransfer.init(obj, infos, needTransfer, needUpdate, outputFileName);
 
         tokenTransfer.process();
 
     }
 
-    public void init(Map<String, Object> params, ArrayList<TransferInfo> infos, boolean needTransfer, String output_file) {
+    public void init(Map<String, Object> params, ArrayList<TransferInfo> infos, boolean needTransfer, boolean needUpdate, String output_file) {
 
         this.needTransfer = needTransfer;
+
+        this.needUpdate = needUpdate;
+
+        System.out.println("needTransfer:" + needTransfer + " needUpdate:" + needUpdate);
 
         this.infos = infos;
 
@@ -196,7 +166,7 @@ public class TokenTransfer {
             baseUrl = "https://www.etherscan.io/tx/";
         }
 
-        this.output_file = chainId + "_" + output_file;
+        this.outputFile = chainId + "_" + output_file;
 
         System.out.println("baseUrl:" + baseUrl);
         System.out.println("gasPrice:" + gasPrice);
@@ -220,26 +190,23 @@ public class TokenTransfer {
 
     }
 
-    public void process() {
+    private void doCheckAndSend() {
 
         double total_amt = 0;
 
         double errAmt = 0;
-
-        if (TokenTransfer.this.needTransfer) {
-            try {
-                System.out.println("transfer now ? (yes/NO)");
-                BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
-                String str = br.readLine();
-                if (!(str != null && CONFIRM.equals(str.toLowerCase()))) {
-                    System.out.println("reject to transfer! exit!");
-                    System.exit(0);
-                } else {
-                    System.out.println("starting to transfer token!");
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
+        try {
+            System.out.println("transfer now ? (yes/NO)");
+            BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+            String str = br.readLine();
+            if (!(str != null && CONFIRM.equals(str.toLowerCase()))) {
+                System.out.println("reject to transfer! exit!");
+                System.exit(0);
+            } else {
+                System.out.println("starting to transfer token!");
             }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
 
         try {
@@ -296,6 +263,8 @@ public class TokenTransfer {
 
                 int offset = 4;
 
+                int decimals = 18;
+
                 double tb = totalBalance.divide(BigInteger.valueOf(10).pow(decimals - offset)).doubleValue() / (Math.pow(10, offset));
 
                 System.out.println("fromAddress:" + fromAddress + " totalBalance:" + String.format("%.04f", tb));
@@ -351,27 +320,26 @@ public class TokenTransfer {
                 long sendTime = (endTime - startTime);
                 extraInfos.put("sendTime", String.format("%d", sendTime) + " ms");
 
-                IOUtils.WriteResult(output_file + "_txs.csv", infos, extraInfos);
+                IOUtils.WriteResult(outputFile + "_txs.csv", infos, extraInfos);
 
                 System.out.println("sendToken time:" + sendTime + "ms");
-
-                startTime = endTime;
-
-                updateStatus();
-
-                endTime = System.currentTimeMillis();
-
-                long updateTime = (endTime - startTime);
-                extraInfos.put("updateTime", String.format("%d", updateTime) + " ms");
-
-                System.out.println("updateStatus time:" + updateTime + "ms");
-
-                IOUtils.WriteResult(output_file + "_report.csv", infos, extraInfos);
 
             }
 
         } catch (Exception e) {
             System.err.println(e);
+        }
+
+    }
+
+    private void process() {
+
+        if (needTransfer) {
+            doCheckAndSend();
+        }
+
+        if (needUpdate) {
+            updateStatusFromFile(outputFile + "_txs.csv");
         }
 
         if (w3jHelper != null) {
@@ -382,11 +350,33 @@ public class TokenTransfer {
 
     }
 
-    private void updateStatus() {
+    private void updateStatusFromFile(String path) {
+
+        System.out.println("start updateStatusFromFile! path:" + path);
+
+        EnumMap<IOUtils.Results, Object> results = IOUtils.getTxInfos(path);
+
+        if (results == null) {
+            System.out.println("results == null");
+            return;
+        }
+
+        List<TransferInfo> infos = (List<TransferInfo>) results.get(IOUtils.Results.LST);
+        Map<String, String> extraInfos = (Map<String, String>) results.get(IOUtils.Results.EXTRA);
+
+        updateStatus(infos, extraInfos);
+    }
+
+    private void updateStatus(List<TransferInfo> infos, Map<String, String> extraInfos) {
 
         System.out.println("start updateStatus!");
 
+        long startTime = System.currentTimeMillis();
+
         if (infos != null) {
+
+            System.out.println("infos.size=" + infos.size());
+            System.out.println("sleepDuration=" + sleepDuration);
 
             boolean allConfirmed = false;
 
@@ -402,7 +392,10 @@ public class TokenTransfer {
 
                 int remaining_count = infos.size();
 
+                int c = 0;
+
                 for (TransferInfo info : infos) {
+                    c++;
                     if (info.getTxHash() != null && !"".equals(info.getTxHash())) {
                         if ("".equals(info.getStatus())) {
                             Optional<TransactionReceipt> receiptOptional = Optional.empty();
@@ -413,12 +406,13 @@ public class TokenTransfer {
                             }
                             if (receiptOptional.isPresent()) {
                                 info.setStatus(receiptOptional.get().getStatus());
+                                System.out.println("set status for " + c + ". " + info.getTxHash());
                                 remaining_count--;
                             } else {
                                 allConfirmed = false;
                                 break;
                             }
-                        } else if ("0x1".equals(info.getStatus())) {
+                        } else {
                             remaining_count--;
                         }
                     }
@@ -430,6 +424,15 @@ public class TokenTransfer {
                 System.out.println("remaining unconfirmed tx num:" + remaining_count);
             }
         }
+
+        long endTime = System.currentTimeMillis();
+
+        long updateTime = (endTime - startTime);
+        extraInfos.put("updateTime", String.format("%d", updateTime) + " ms");
+
+        System.out.println("updateStatus time:" + updateTime + "ms");
+
+        IOUtils.WriteResult(outputFile + "_report.csv", infos, extraInfos);
     }
 
 }

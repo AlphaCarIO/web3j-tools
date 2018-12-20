@@ -1,15 +1,17 @@
 package com.alphacar.utils;
 
-import java.io.*;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Map;
-import java.util.TreeMap;
-
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.apache.poi.xssf.usermodel.XSSFCell;
 import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
 
 
 class MapKeyComparator implements Comparator<String> {
@@ -21,14 +23,18 @@ class MapKeyComparator implements Comparator<String> {
 
 }
 
+/**
+ * @author leo
+ */
 public class IOUtils {
+
     private final static String EOL = System.getProperty("line.separator");
 
     private static XSSFWorkbook readFile(String filename) throws IOException {
         return new XSSFWorkbook(new FileInputStream(filename));
     }
 
-    private static Map<String, String> sortMapByKey(Map<String, String> map) {
+    public static Map<String, String> sortMapByKey(Map<String, String> map) {
         if (map == null || map.isEmpty()) {
             return null;
         }
@@ -42,7 +48,7 @@ public class IOUtils {
     }
 
     public static void WriteResult(String output_file,
-                                   ArrayList<TransferInfo> infos, Map<String, String> extraInfos) {
+                                   List<TransferInfo> infos, Map<String, String> extraInfos) {
 
         File output = new File(output_file);
         BufferedWriter writer = null;
@@ -158,24 +164,23 @@ public class IOUtils {
         }
 //判断数据的类型
         switch (cell.getCellType()) {
-            case XSSFCell.CELL_TYPE_NUMERIC: //数字
+            case XSSFCell.CELL_TYPE_NUMERIC:
                 cellValue = String.valueOf(cell.getNumericCellValue());
                 break;
-            case XSSFCell.CELL_TYPE_STRING: //字符串
+            case XSSFCell.CELL_TYPE_STRING:
                 cellValue = String.valueOf(cell.getStringCellValue());
                 break;
-            case XSSFCell.CELL_TYPE_BOOLEAN: //Boolean
+            case XSSFCell.CELL_TYPE_BOOLEAN:
                 cellValue = String.valueOf(cell.getBooleanCellValue());
                 break;
-            case XSSFCell.CELL_TYPE_FORMULA: //公式
-// cellValue = String.valueOf(cell.getCellFormula());
+            case XSSFCell.CELL_TYPE_FORMULA:
                 cellValue = String.valueOf(cell.getStringCellValue());
                 break;
-            case XSSFCell.CELL_TYPE_BLANK: //空值
+            case XSSFCell.CELL_TYPE_BLANK:
                 cellValue = "";
                 break;
-            case XSSFCell.CELL_TYPE_ERROR: //故障
-                cellValue = "非法字符";
+            case XSSFCell.CELL_TYPE_ERROR:
+                cellValue = "Error!";
                 break;
             default:
                 cellValue = "未知类型";
@@ -185,5 +190,67 @@ public class IOUtils {
         cellValue = cellValue.trim();
 
         return cellValue;
+    }
+
+    public enum Results {
+        LST, EXTRA
+    }
+
+    public static EnumMap<Results, Object> getTxInfos(String filePath) {
+
+        System.out.println("filePath:" + filePath);
+
+        ArrayList<TransferInfo> infos = new ArrayList<>();
+        Map<String, String> extraInfos = new HashMap<>();
+
+        try (
+                Reader reader = Files.newBufferedReader(Paths.get(filePath));
+                CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT)
+        ) {
+            boolean firstLine = true;
+            int mode = 0;
+            for (CSVRecord csvRecord : csvParser) {
+                if (firstLine) {
+                    firstLine = false;
+                    continue;
+                }
+                String ethAddress = csvRecord.get(0).trim();
+                if ("".equals(ethAddress) || "gas(eth) per tx".equals(ethAddress)) {
+                    mode = 1;
+                }
+                switch (mode) {
+                    case 0: {
+                        TransferInfo info = new TransferInfo();
+                        info.setEthAddress(ethAddress);
+                        info.setFormattedEthAddress(csvRecord.get(1).trim());
+                        info.setFlag(csvRecord.get(2).trim());
+                        info.setAmount(Double.parseDouble(csvRecord.get(3).trim()));
+                        info.setStatus(csvRecord.get(4).trim());
+                        String tx = csvRecord.get(5).trim();
+                        int tmp = tx.lastIndexOf('/') + 1;
+                        info.setBaseUrl(tx.substring(0, tmp));
+                        info.setTxHash(tx.substring(tmp));
+                        infos.add(info);
+                        break;
+                    }
+                    case 1: {
+                        extraInfos.put(csvRecord.get(0).trim(), csvRecord.get(1).trim());
+                        break;
+                    }
+                    default: {
+                        break;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            System.err.println(e);
+            return null;
+        }
+        EnumMap<Results, Object> results = new EnumMap<>(Results.class);
+
+        results.put(Results.LST, infos);
+        results.put(Results.EXTRA, extraInfos);
+
+        return results;
     }
 }
