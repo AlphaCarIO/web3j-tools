@@ -195,19 +195,6 @@ public class TokenTransfer {
         double total_amt = 0;
 
         double errAmt = 0;
-        try {
-            System.out.println("transfer now ? (yes/NO)");
-            BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
-            String str = br.readLine();
-            if (!(str != null && CONFIRM.equals(str.toLowerCase()))) {
-                System.out.println("reject to transfer! exit!");
-                System.exit(0);
-            } else {
-                System.out.println("starting to transfer token!");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
 
         try {
 
@@ -278,6 +265,19 @@ public class TokenTransfer {
                 extraInfos.put("totalBalance", String.format("%.04f", tb));
 
                 if (TokenTransfer.this.needTransfer) {
+                    try {
+                        System.out.println("transfer now ? (yes/NO)");
+                        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+                        String str = br.readLine();
+                        if (!(str != null && CONFIRM.equals(str.toLowerCase()))) {
+                            System.out.println("reject to transfer! exit!");
+                            System.exit(0);
+                        } else {
+                            System.out.println("starting to transfer token!");
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
 
                     BigInteger nonce = w3jHelper.getNonce(fromAddress);
 
@@ -301,6 +301,8 @@ public class TokenTransfer {
 
                     }
 
+                } else {
+                    return;
                 }
 
                 extraInfos.put("total_amt", String.format("%.04f", total_amt));
@@ -334,9 +336,7 @@ public class TokenTransfer {
 
     private void process() {
 
-        if (needTransfer) {
-            doCheckAndSend();
-        }
+        doCheckAndSend();
 
         if (needUpdate) {
             updateStatusFromFile(outputFile + "_txs.csv");
