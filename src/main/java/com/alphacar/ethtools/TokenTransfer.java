@@ -1,6 +1,7 @@
 package com.alphacar.ethtools;
 
 import com.alphacar.utils.*;
+import org.apache.commons.cli.*;
 import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
@@ -73,43 +74,73 @@ public class TokenTransfer {
 
     public static void main(String[] args) {
 
-        String configFile = "";
+        Options options = new Options();
 
-        if (args.length >= 1) {
-            configFile = args[0];
+        Option config = new Option("c", "config", true, "config file");
+        config.setRequired(true);
+        options.addOption(config);
+
+        Option file = new Option("f", "transferFile", true, "transfer file");
+        file.setRequired(true);
+        options.addOption(file);
+
+        Option gasPrice = new Option("g", "gasPrice", true, "gas price");
+        gasPrice.setRequired(false);
+        options.addOption(gasPrice);
+
+        Option transfer = new Option("t", "transfer", false, "transfer flag");
+        transfer.setRequired(false);
+        options.addOption(transfer);
+
+        Option update = new Option("u", "update", false, "update flag");
+        update.setRequired(false);
+        options.addOption(update);
+
+        CommandLineParser parser = new DefaultParser();
+        HelpFormatter formatter = new HelpFormatter();
+
+        CommandLine cmd = null;
+
+        try {
+            cmd = parser.parse(options, args);
+        } catch (ParseException e) {
+            System.out.println(e.getMessage());
+            formatter.printHelp("utility-name", options);
+
+            System.exit(1);
         }
 
-        String transferListFile = "";
+        String configFilePath = cmd.getOptionValue("config");
+        String transferFilePath = cmd.getOptionValue("transferFile");
 
-        if (args.length >= 2) {
-            transferListFile = args[1];
+        int gasPriceVal;
+        try{
+            System.out.println("cmd.getOptionValue(\"gasPrice\")" + cmd.getOptionValue("gasPrice"));
+            gasPriceVal = Integer.parseInt(cmd.getOptionValue("gasPrice"));
+        }   catch(Exception e) {
+            e.printStackTrace();
+            gasPriceVal = 0;
         }
 
-        boolean needTransfer = false;
+        boolean needTransfer = cmd.hasOption("t");
 
-        boolean needUpdate = false;
+        boolean needUpdate = cmd.hasOption("u");
 
-        if (args.length >= 3) {
-            String param = args[2].toLowerCase();
-            if ("tu".equals(param)) {
-                needTransfer = true;
-                needUpdate = true;
-            } else if ("t".equals(param)) {
-                needTransfer = true;
-                needUpdate = false;
-            } else if ("u".equals(param)) {
-                needTransfer = false;
-                needUpdate = true;
-            }
-        }
+        System.out.println(configFilePath);
+        System.out.println(transferFilePath);
 
-        System.out.println("configFile=" + configFile);
-        System.out.println("transferListFile=" + transferListFile);
+        System.out.println("needTransfer:" + needTransfer);
+        System.out.println("needUpdate:" + needUpdate);
+
+        System.out.println("gasPriceVal=" + gasPriceVal);
+
+        System.out.println("configFilePath=" + configFilePath);
+        System.out.println("transferFilePath=" + transferFilePath);
 
         ArrayList<TransferInfo> infos = null;
 
         try {
-            infos = IOUtils.POIReadExcel(transferListFile);
+            infos = IOUtils.POIReadExcel(transferFilePath);
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -121,22 +152,25 @@ public class TokenTransfer {
 
         InputStream inputStream = null;
         try {
-            inputStream = new FileInputStream(configFile);
+            inputStream = new FileInputStream(configFilePath);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
 
         Map<String, Object> obj = yaml.load(inputStream);
 
-        String outputFileName = transferListFile.substring(transferListFile.lastIndexOf("/") + 1,
-                transferListFile.lastIndexOf("."));
-        tokenTransfer.init(obj, infos, needTransfer, needUpdate, outputFileName);
+        String outputFileName = transferFilePath.substring(transferFilePath.lastIndexOf("/") + 1,
+                transferFilePath.lastIndexOf("."));
+        tokenTransfer.init(obj, infos, gasPriceVal, needTransfer, needUpdate, outputFileName);
 
         tokenTransfer.process();
 
     }
 
-    public void init(Map<String, Object> params, ArrayList<TransferInfo> infos, boolean needTransfer, boolean needUpdate, String output_file) {
+    public void init(Map<String, Object> params, ArrayList<TransferInfo> infos, int gasPriceVal,
+                     boolean needTransfer, boolean needUpdate, String output_file) {
+
+        this.gasPrice = gasPriceVal;
 
         this.needTransfer = needTransfer;
 
@@ -157,7 +191,10 @@ public class TokenTransfer {
             sleepDuration = tempSleepDuration;
         }
 
-        gasPrice = (Integer) web3_info.get("gasPrice");
+        if (gasPrice <= 0) {
+            gasPrice = (Integer) web3_info.get("gasPrice");
+        }
+
         gasPerTx = (Integer) web3_info.get("gasPerTx");
         fromAddress = (String) web3_info.get("address");
         chainId = ((Integer) web3_info.get("chainId")).byteValue();

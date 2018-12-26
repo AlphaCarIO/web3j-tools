@@ -30,3 +30,4 @@ target
 *.csv
 .DS_Store
 test_data
+gas_price*
