@@ -12,6 +12,7 @@ import org.web3j.crypto.Credentials;
 import org.web3j.crypto.RawTransaction;
 import org.web3j.crypto.TransactionEncoder;
 import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameter;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.request.Transaction;
 import org.web3j.protocol.core.methods.response.*;
@@ -67,6 +68,20 @@ public class Web3jHelper {
         System.out.println("nonce " + nonce);
         return nonce;
 
+    }
+
+    public BigInteger getBalance(String address) {
+
+        BigInteger balance = null;
+
+        try {
+            EthGetBalance egb = web3j.ethGetBalance(address, DefaultBlockParameter.valueOf("latest")).send();
+            balance = egb.getBalance();
+        } catch (IOException e) {
+            balance = BigInteger.valueOf(0);
+        }
+
+        return balance;
     }
 
     public BigInteger getTokenBalance(String contractAddress, String fromAddress) {

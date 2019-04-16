@@ -6,6 +6,7 @@ import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.protocol.core.methods.response.TransactionReceipt;
 import org.web3j.tx.ChainId;
+import org.web3j.utils.Convert;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
@@ -291,15 +292,39 @@ public class TokenTransfer {
 
                 double tb = totalBalance.divide(BigInteger.valueOf(10).pow(decimals - offset)).doubleValue() / (Math.pow(10, offset));
 
+                String val = w3jHelper.getBalance(fromAddress).toString();
+                System.out.println("val:" + val);
+
+                double ethB = Convert.fromWei(val, Convert.Unit.ETHER).doubleValue();
+
                 System.out.println("fromAddress:" + fromAddress + " totalBalance:" + String.format("%.04f", tb));
+                System.out.println(String.format("get Eth Balance:%.04f", ethB));
+                System.out.println(String.format("count = %d", infos.size()));
                 System.out.println(String.format("%.04f", total_amt) + " to be sent!");
+
+                extraInfos.put("totalBalance", String.format("%.04f", tb));
+
+                extraInfos.put("total_amt", String.format("%.04f", total_amt));
+                double gasEth = gasPrice * gasPerTx * 1e-9;
+
+                System.out.println("all_amt:" + String.format("%.04f", (total_amt + errAmt)) + "   error amt:" + errAmt);
+                System.out.println("total count:" + infos.size() + " txs.");
+                System.out.println("eth per tx:" + String.format("%.06f", gasEth) + " ether");
+                System.out.println("total gas(eth):" + String.format("%.06f", infos.size() * gasEth) + " ether.");
+
+                extraInfos.put("total count", String.format("%d", infos.size()));
+                extraInfos.put("gas(eth) per tx", String.format("%.06f", gasEth) + " wei");
+                extraInfos.put("total gas(eth)", String.format("%.06f", gasEth * infos.size()) + " wei");
+
+                if (ethB < gasEth * infos.size())  {
+                    System.out.println("buffer account don't have enough eth for gas!");
+                    System.exit(-1);
+                }
 
                 if (tb < total_amt) {
                     System.out.println("buffer account don't have enough token!");
                     System.exit(-1);
                 }
-
-                extraInfos.put("totalBalance", String.format("%.04f", tb));
 
                 if (TokenTransfer.this.needTransfer) {
                     try {
@@ -341,18 +366,6 @@ public class TokenTransfer {
                 } else {
                     return;
                 }
-
-                extraInfos.put("total_amt", String.format("%.04f", total_amt));
-                double gasEth = gasPrice * gasPerTx * 1e-9;
-
-                System.out.println("all_amt:" + String.format("%.04f", (total_amt + errAmt)) + "   error amt:" + errAmt);
-                System.out.println("total count:" + infos.size() + " txs.");
-                System.out.println("eth per tx:" + String.format("%.06f", gasEth) + " ether");
-                System.out.println("total gas(eth):" + String.format("%.06f", infos.size() * gasEth) + " ether.");
-
-                extraInfos.put("total count", String.format("%d", infos.size()));
-                extraInfos.put("gas(eth) per tx", String.format("%.06f", gasEth) + " eth");
-                extraInfos.put("total gas(eth)", String.format("%.06f", gasEth * infos.size()) + " eth");
 
                 long endTime = System.currentTimeMillis();
 
