@@ -321,12 +321,13 @@ public class TokenTransfer {
                     System.exit(-1);
                 }
 
-                if (tb < total_amt) {
-                    System.out.println("buffer account don't have enough token!");
-                    System.exit(-1);
-                }
-
                 if (TokenTransfer.this.needTransfer) {
+
+                    if (tb < total_amt) {
+                        System.out.println("buffer account don't have enough token!");
+                        System.exit(-1);
+                    }
+
                     try {
                         System.out.println("transfer now ? (yes/NO)");
                         BufferedReader br = new BufferedReader(new InputStreamReader(System.in));

@@ -25,11 +25,14 @@ def fetch_gas(url):
             return "0"
 
         html = BeautifulSoup(res.text, 'html.parser')
-        divs = html.find_all('div', attrs = {'class':'col-md-2 col-sm-4 col-xs-6 tile_stats_count'})
+        #divs = html.find_all('div', attrs = {'class':'col-md-2 col-sm-4 col-xs-6 tile_stats_count'})
+        divs = html.find_all('div', attrs = {'class':'col-md-4 col-sm-4 col-xs-6 tile_stats_count'})
 
         for div in divs:
+            print('div:', div)
             ind = str(div).find('Gas Price Std (Gwei)')
             if ind != -1:
+                print('------>find div', div)
                 price = div.find('div', 'count')
                 return str(int(math.ceil(float(price.text))))
 
@@ -38,5 +41,7 @@ def fetch_gas(url):
 if __name__ == "__main__":
 
     price = fetch_gas('https://ethgasstation.info/')
+
+    print('fetch gas: ' + price)
 
     os.system("echo " + price + " > gas_price")
