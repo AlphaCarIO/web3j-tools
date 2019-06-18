@@ -30,7 +30,9 @@ def fetch_gas(url):
 
         for div in divs:
             print('div:', div)
-            ind = str(div).find('Gas Price Std (Gwei)')
+            #
+            ind = str(div).find('count fast')
+            #ind = str(div).find('Gas Price Std (Gwei)')
             if ind != -1:
                 print('------>find div', div)
                 price = div.find('div', 'count')
